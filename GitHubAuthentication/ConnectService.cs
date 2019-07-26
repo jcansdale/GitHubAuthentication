@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 using EnvDTE;
 using Microsoft;
 using Microsoft.Alm.Authentication;
@@ -96,6 +97,11 @@ namespace GitHubAuthentication
             catch (ArgumentException)
             {
                 // Command not found
+                return false;
+            }
+            catch (COMException)
+            {
+                // Command not enabled
                 return false;
             }
         }
