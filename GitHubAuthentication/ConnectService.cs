@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 using EnvDTE;
+using Microsoft;
 using Microsoft.Alm.Authentication;
 using Microsoft.VisualStudio.Shell;
 using Octokit.GraphQL.Core.Deserializers;
@@ -9,9 +9,11 @@ namespace GitHubAuthentication
 {
     public class ConnectService
     {
-        // This is the connect command from GitHub for Visual Studio
-        static readonly Guid guidGitHubCmdSet = new Guid("c4c91892-8881-4588-a5d9-b41e8f540f5a");
-        const int addConnectionCommand = 272;
+        // Connect command from GitHub for Visual Studio
+        static readonly CommandInfo gitHubConnectCommand = new CommandInfo { Guid = "c4c91892-8881-4588-a5d9-b41e8f540f5a", ID = 0x0110 };
+
+        // Connect command from GitHub Essentials
+        static readonly CommandInfo essentialsConnectCommand = new CommandInfo { Guid = "8de10943-8643-4f81-88a3-83b81d204ff4", ID = 0x0110 };
 
         readonly IServiceProvider serviceProvider;
 
@@ -22,6 +24,8 @@ namespace GitHubAuthentication
 
         public TResult EnsureConnection<TResult>(Func<string, TResult> method)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             var token = FindGitHubToken();
             if (token == null)
             {
@@ -65,37 +69,41 @@ namespace GitHubAuthentication
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var command = FindCommand(guidGitHubCmdSet, addConnectionCommand);
-            if (command == null)
+            if (TryRaiseCommand(essentialsConnectCommand))
             {
-                throw new InvalidOperationException("GitHub for Visual Studio isn't installed");
+                return;
             }
 
-            DTE.Commands.Raise(command.Guid, command.ID, null, null);
+            if (TryRaiseCommand(gitHubConnectCommand))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("Couldn't find GitHub for Visual Studio or Essentials extension");
         }
 
-        Command FindCommand(Guid guid, int id)
+        bool TryRaiseCommand(CommandInfo commandInfo)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
             try
             {
-                return DTE.Commands.Item(guid, id);
+                var dte = serviceProvider.GetService(typeof(DTE)) as DTE;
+                Assumes.Present(dte);
+                dte.Commands.Raise(commandInfo.Guid, commandInfo.ID, null, null);
+                return true;
             }
-            catch (COMException)
+            catch (ArgumentException)
             {
-                return null;
+                // Command not found
+                return false;
             }
         }
 
-        DTE DTE
+        struct CommandInfo
         {
-            get
-            {
-                ThreadHelper.ThrowIfNotOnUIThread();
-
-                return serviceProvider.GetService(typeof(DTE)) as DTE;
-            }
+            public string Guid;
+            public int ID;
         }
 
     }
